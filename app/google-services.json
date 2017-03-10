@@ -1,0 +1,51 @@
+{
+  "project_info": {
+    "project_number": "253603208938",
+    "project_id": "healthtracker-161117"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:253603208938:android:7fb4a0186f3dd18b",
+        "android_client_info": {
+          "package_name": "com.sindhura.healthtracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "253603208938-f48c7prb6lj9jkhn24a2ldp2mk769e09.apps.googleusercontent.com",
+          "client_type": 3
+        },
+        {
+          "client_id": "253603208938-8dm3ee3oe3dpiqvvj9dnqnr4ssv85ur6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sindhura.healthtracker",
+            "certificate_hash": "00c2a7d46623c38eb6253962831971cdbc4525b5"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuZz_q07NxWKBbnuY1ojk0Yi0ilmcsQ04"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 2,
+          "analytics_property": {
+            "tracking_id": "UA-79254429-3"
+          }
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

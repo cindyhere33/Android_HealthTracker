@@ -3,7 +3,6 @@ package com.sindhura.healthtracker.activities;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -19,34 +18,37 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.Scopes;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResolvingResultCallbacks;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.fitness.Fitness;
-import com.google.android.gms.fitness.FitnessActivities;
 import com.google.android.gms.fitness.FitnessStatusCodes;
-import com.google.android.gms.fitness.data.DataPoint;
 import com.google.android.gms.fitness.data.DataSet;
 import com.google.android.gms.fitness.data.DataSource;
 import com.google.android.gms.fitness.data.DataType;
 import com.google.android.gms.fitness.data.Field;
-import com.google.android.gms.fitness.data.Session;
 import com.google.android.gms.fitness.data.Value;
 import com.google.android.gms.fitness.request.DataReadRequest;
 import com.google.android.gms.fitness.request.DataSourcesRequest;
 import com.google.android.gms.fitness.request.OnDataPointListener;
 import com.google.android.gms.fitness.request.SensorRequest;
-import com.google.android.gms.fitness.request.SessionInsertRequest;
 import com.google.android.gms.fitness.result.DataReadResult;
 import com.google.android.gms.fitness.result.DataSourcesResult;
-import com.google.android.gms.fitness.result.SessionStopResult;
+import com.jjoe64.graphview.GraphView;
+import com.jjoe64.graphview.series.BarGraphSeries;
+import com.jjoe64.graphview.series.DataPoint;
+import com.jjoe64.graphview.series.LineGraphSeries;
 import com.sindhura.healthtracker.R;
-import com.sindhura.healthtracker.logs.LogView;
 import com.sindhura.healthtracker.logs.LogWrapper;
 import com.sindhura.healthtracker.logs.MessageOnlyLogFilter;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -58,7 +60,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_PERMISSIONS_REQUEST_CODE = 56;
     private GoogleApiClient mClient = null;
     private final String TAG = getClass().getName();
-    Session session;
+    // TextView tvData;
+    GraphView graph, graph2;
 
     OnDataPointListener mListener;
 
@@ -66,20 +69,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        // tvData = (TextView) findViewById(R.id.tvData);
+        graph = (GraphView) findViewById(R.id.graphView);
+        graph2 = (GraphView) findViewById(R.id.graphView2);
         initializeLogging();
         if (!checkPermissions()) {
             requestPermissions();
         }
-        session = new Session.Builder()
-                .setName("Test Session")
-                .setIdentifier("Test session data")
-                .setDescription("Test description")
-                .setStartTime(System.currentTimeMillis() - 604800000L, TimeUnit.MILLISECONDS)
-                // optional - if your app knows what activity:
-                .setActivity(FitnessActivities.RUNNING_JOGGING)
-                .build();
-
-
     }
 
 
@@ -125,32 +121,29 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
     }
 
-    private void findFitnessDataSources() {
+    private void findDataSource(final DataType dataType) {
         Fitness.SensorsApi.findDataSources(mClient, new DataSourcesRequest.Builder()
-                .setDataTypes(DataType.TYPE_LOCATION_SAMPLE)
-                .setDataSourceTypes(DataSource.TYPE_RAW)
-                .build())
+                .setDataTypes(dataType).setDataSourceTypes(DataSource.TYPE_RAW).build())
                 .setResultCallback(new ResultCallback<DataSourcesResult>() {
                     @Override
-                    public void onResult(DataSourcesResult dataSourcesResult) {
-                        Log.i(TAG, "Result: " + dataSourcesResult.getStatus().toString());
+                    public void onResult(@NonNull DataSourcesResult dataSourcesResult) {
                         for (DataSource dataSource : dataSourcesResult.getDataSources()) {
                             Log.i(TAG, "Data source found: " + dataSource.toString());
                             Log.i(TAG, "Data Source type: " + dataSource.getDataType().getName());
-
-                            if (dataSource.getDataType().equals(DataType.TYPE_LOCATION_SAMPLE)
-                                    && mListener == null) {
-                                Log.i(TAG, "Data source for LOCATION_SAMPLE found!  Registering.");
-                                registerFitnessDataListener(dataSource,
-                                        DataType.TYPE_LOCATION_SAMPLE);
-
-                                recordData();
-
-                            }
-                            getHistory();
+                            registerFitnessDataListener(dataSource, dataType);
                         }
                     }
                 });
+    }
+
+    private void findFitnessDataSources() {
+        DataType[] dataTypes = new DataType[]{DataType.TYPE_DISTANCE_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA, DataType.TYPE_ACTIVITY_SAMPLE,
+                DataType.AGGREGATE_ACTIVITY_SUMMARY, DataType.TYPE_CALORIES_EXPENDED, DataType.TYPE_SPEED};
+        for (DataType dataType : dataTypes) {
+            findDataSource(dataType);
+        }
+        recordData();
+        getHistory();
     }
 
 
@@ -159,32 +152,125 @@ public class MainActivity extends AppCompatActivity {
         final PendingResult<DataReadResult> pendingResult = Fitness.HistoryApi.readData(
                 mClient,
                 new DataReadRequest.Builder()
-                        .read(DataType.TYPE_STEP_COUNT_CUMULATIVE)
-                        .setTimeRange(System.currentTimeMillis() - 604800000L, System.currentTimeMillis(), TimeUnit.MILLISECONDS)
+//                        .read(DataType.TYPE_ACTIVITY_SAMPLE)
+//                        .read(DataType.TYPE_CALORIES_EXPENDED)
+//                        .read(DataType.AGGREGATE_ACTIVITY_SUMMARY)
+//                        .read(DataType.TYPE_DISTANCE_DELTA)
+//                        .read(DataType.AGGREGATE_CALORIES_EXPENDED)
+                        .read(DataType.AGGREGATE_STEP_COUNT_DELTA)
+//                        .read(DataType.TYPE_SPEED)
+////                        .aggregate(DataType.TYPE_ACTIVITY_SAMPLE, DataType.AGGREGATE_ACTIVITY_SUMMARY)
+//                        .aggregate(DataType.TYPE_CALORIES_EXPENDED, DataType.AGGREGATE_CALORIES_EXPENDED)
+//                        .bucketByTime(1, TimeUnit.MINUTES)
+                        .setTimeRange(System.currentTimeMillis() - 604800000L, System.currentTimeMillis() - (17 * 60 * 60 * 1000), TimeUnit.MILLISECONDS)
                         .build());
 
-        pendingResult.setResultCallback(new ResultCallback<DataReadResult>() {
+     /*   Fitness.HistoryApi.readDailyTotal(mClient, DataType.AGGREGATE_STEP_COUNT_DELTA).setResultCallback(new ResultCallback<DailyTotalResult>() {
             @Override
-            public void onResult(@NonNull DataReadResult dataReadResult) {
+            public void onResult(@NonNull DailyTotalResult dailyTotalResult) {
                 SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy H:mm a");
-                DataSet dataSet = dataReadResult.getDataSet(DataType.TYPE_STEP_COUNT_CUMULATIVE);
-                for (DataPoint dp : dataSet.getDataPoints()) {
-                    Log.i(TAG, "Data point:" );
-                    Log.i(TAG, "\tType: " + dp.getDataType().getName());
-                     Log.i(TAG, "\tStart: " + dateFormat.format(dp.getStartTime(TimeUnit.MILLISECONDS)));
-                     Log.i(TAG, "\tEnd: " + dateFormat.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
-                    for (Field field : dp.getDataType().getFields()) {
-                        Log.i(TAG, "\tField: " + field.getName() +
-                                " Value: " + dp.getValue(field));
+                StringBuilder builder = new StringBuilder();
+
+//                for (DataSet dataSet : dailyTotalResult.getTotal().getDataSets()) {
+                    for (com.google.android.gms.fitness.data.DataPoint dp : dailyTotalResult.getTotal().getDataPoints()) {
+                        builder.append("Data Point:\n\tType: ").append(dp.getDataType().getName());
+                        builder.append("\n\tStart time: ").append(dateFormat.format(dp.getStartTime(TimeUnit.MILLISECONDS)));
+                        builder.append("\n\tEnd time: ").append(dateFormat.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
+                        for (Field field : dp.getDataType().getFields()) {
+                            builder.append("\n\tField: ").append(field.getName()).append("\tValue: ").append(dp.getValue(field));
+                        }
+                        builder.append("\n\n");
+                    }
+
+               // tvData.setText(tvData.getText() + builder.toString());
+            }
+        });*/
+
+        pendingResult.setResultCallback(new ResolvingResultCallbacks<DataReadResult>(this, 1) {
+            @Override
+            public void onSuccess(@NonNull DataReadResult dataReadResult) {
+                SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy H:mm a");
+                StringBuilder builder = new StringBuilder();
+                int i = 0;
+                List<DataPoint> points = new ArrayList<DataPoint>();
+                HashMap<Date, Float> map = new HashMap<Date, Float>();
+                for (DataSet dataSet : dataReadResult.getDataSets()) {
+                    for (com.google.android.gms.fitness.data.DataPoint dp : dataSet.getDataPoints()) {
+                        builder.append("Data Point:\n\tType: ").append(dp.getDataType().getName());
+                        builder.append("\n\tStart time: ").append(dateFormat.format(dp.getStartTime(TimeUnit.MILLISECONDS)));
+                        builder.append("\n\tEnd time: ").append(dateFormat.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
+                        Date key = null;
+                        try {
+                            key = new SimpleDateFormat("MM/dd/yyyy").parse(dateFormat.format(dp.getStartTime(TimeUnit.MILLISECONDS)));
+                            float f = 0;
+                            for (Field field : dp.getDataType().getFields()) {
+                                builder.append("\n\tField: ").append(field.getName()).append("\tValue: ").append(dp.getValue(field));
+                                f = f + Float.parseFloat(dp.getValue(field).toString());
+                            }
+                            boolean found = false;
+                            for (Date key2 : map.keySet()) {
+                                if (key2.compareTo(key) == 0) {
+                                    map.put(key, map.get(key) + f);
+                                    found = true;
+                                }
+                            }
+                            if (!found) map.put(key, f);
+
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                        builder.append("\n\n");
                     }
                 }
+                //  DataPoint[] dpoints = new DataPoint[points.size()];
+                DataPoint[] dpoints = new DataPoint[]{new DataPoint(new Date(), 0)};
+                if (map.size() > 0) {
+                    dpoints = new DataPoint[map.size()];
+                    i = 0;
+                    for (Date key : map.keySet()) {
+                        dpoints[i] = new DataPoint(i, map.get(key));
+                        i++;
+                    }
+                }
+                LineGraphSeries<DataPoint> series = new LineGraphSeries<DataPoint>(dpoints);
+                BarGraphSeries<DataPoint> series2 = new BarGraphSeries<DataPoint>(dpoints);
+                //   graph2.getViewport().setXAxisBoundsManual(true);
+                graph2.addSeries(series2);
+                graph.addSeries(series);
+                graph.getGridLabelRenderer().setNumHorizontalLabels(7);
+                graph2.getGridLabelRenderer().setNumHorizontalLabels(7);
+                //  graph.getGridLabelRenderer().setLabelFormatter(new DateAsXAxisLabelFormatter(MainActivity.this));
+                //graph2.getGridLabelRenderer().setLabelFormatter(new DateAsXAxisLabelFormatter(MainActivity.this));
+                graph.getViewport().setScrollable(true); // enables horizontal scrolling
+                graph.getViewport().setScrollableY(true); // enables vertical scrolling
+                graph.getViewport().setScalable(true); // enables horizontal zooming and scrolling
+                graph.getViewport().setScalableY(true); // enables vertical zooming and scrolling
+                graph2.getViewport().setScrollable(true); // enables horizontal scrolling
+                graph2.getViewport().setScrollableY(true); // enables vertical scrolling
+                graph2.getViewport().setScalable(true); // enables horizontal zooming and scrolling
+                graph2.getViewport().setScalableY(true); // enables vertical zooming and scrolling
+                //  graph.invalidate();
+                // tvData.setText(tvData.getText() + builder.toString());
+
             }
+
+            @Override
+            public void onUnresolvableFailure(@NonNull Status status) {
+                Log.e(TAG, status.getStatus() + " : " + status.getStatusMessage());
+            }
+
         });
 
 
     }
 
     private void recordData() {
+        Fitness.RecordingApi.subscribe(mClient, DataType.TYPE_DISTANCE_DELTA);
+        Fitness.RecordingApi.subscribe(mClient, DataType.AGGREGATE_CALORIES_EXPENDED);
+        Fitness.RecordingApi.subscribe(mClient, DataType.AGGREGATE_ACTIVITY_SUMMARY);
+        Fitness.RecordingApi.subscribe(mClient, DataType.AGGREGATE_CALORIES_EXPENDED);
+        Fitness.RecordingApi.subscribe(mClient, DataType.TYPE_CALORIES_EXPENDED);
+        Fitness.RecordingApi.subscribe(mClient, DataType.TYPE_SPEED);
         Fitness.RecordingApi.subscribe(mClient, DataType.TYPE_ACTIVITY_SAMPLE)
                 .setResultCallback(new ResultCallback<Status>() {
                     @Override
@@ -203,10 +289,12 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
+    List<OnDataPointListener> listeners = new ArrayList<>();
+
     private void registerFitnessDataListener(DataSource dataSource, DataType dataType) {
-        mListener = new OnDataPointListener() {
+        OnDataPointListener listener = new OnDataPointListener() {
             @Override
-            public void onDataPoint(DataPoint dataPoint) {
+            public void onDataPoint(com.google.android.gms.fitness.data.DataPoint dataPoint) {
                 for (Field field : dataPoint.getDataType().getFields()) {
                     Value val = dataPoint.getValue(field);
                     Log.i(TAG, "Detected DataPoint field: " + field.getName());
@@ -214,12 +302,11 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
-
         Fitness.SensorsApi.add(mClient, new SensorRequest.Builder()
                 .setDataSource(dataSource) // Optional but recommended for custom data sets.
                 .setDataType(dataType) // Can't be omitted.
-                .setSamplingRate(10, TimeUnit.SECONDS)
-                .build(), mListener).setResultCallback(new ResultCallback<Status>() {
+                .setSamplingRate(1, TimeUnit.DAYS)
+                .build(), listener).setResultCallback(new ResultCallback<Status>() {
             @Override
             public void onResult(Status status) {
                 if (status.isSuccess()) {
@@ -229,6 +316,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+        listeners.add(listener);
     }
 
 
@@ -263,11 +351,11 @@ public class MainActivity extends AppCompatActivity {
         com.sindhura.healthtracker.logs.Log.setLogNode(logWrapper);
         MessageOnlyLogFilter msgFilter = new MessageOnlyLogFilter();
         logWrapper.setNext(msgFilter);
-        LogView logView = (LogView) findViewById(R.id.sample_logview);
+/*        LogView logView = (LogView) findViewById(R.id.sample_logview);
 
         logView.setBackgroundColor(Color.WHITE);
         msgFilter.setNext(logView);
-        Log.i(TAG, "Ready");
+        Log.i(TAG, "Ready");*/
     }
 
     private boolean checkPermissions() {
